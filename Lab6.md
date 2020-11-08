@@ -3,7 +3,8 @@ Lab6
 Author: Isabela Vieira
 
 Collaborators:Christopher Tinevra, Akimawe Kadiri, Nicole Kerrison,Mostafa Ragheb, Charles Reed, Monica Martinez-Raga
-11/6/2020
+
+November 6, 2020
 
 ``` r
 load("~/Documents/College/Fall 2020/Econometrics/acs2017_ny_data.RData")
