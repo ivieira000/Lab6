@@ -1,6 +1,7 @@
 Lab6
 ================
-Isabela Vieira
+Author: Isabela Vieira
+Collaborators: Christopher Tinevra, Akimawe Kadiri, Nicole Kerrison,Mostafa Ragheb, Charles Reed, Monica Martinez-Raga
 11/6/2020
 
 ``` r
