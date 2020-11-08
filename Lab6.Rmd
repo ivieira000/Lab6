@@ -1,0 +1,192 @@
+---
+title: "Lab6"
+author: "Isabela Vieira"
+date: "11/6/2020"
+output: github_document
+Collaborators: Christopher Tinevra, Akimawe Kadiri, Nicole Kerrison, Mostafa Ragheb, Charles Reed, Monica Martinez-Raga
+always_allow_html: true
+---
+```{r}
+load("~/Documents/College/Fall 2020/Econometrics/acs2017_ny_data.RData")
+attach(acs2017_ny)
+```
+
+Create a variable that will allow us to restrict the dataset to only work with a choosen population. I'm interested in seing the labor patterns within the female population, mainly because there are insteresting factors that might affect women's participation in the labor force that generally would not affect men (accoding to my personal bias, we'll see if that bias holds). For instance, number of children and marital status. In the lab we saw that NAs only appeared when age <25, so we'll restrict our dataset so to include only females aged 25+. This population of females aged 25+ has a total number of observations equal to 74,007.
+```{r}
+use_varb <- (AGE >= 25) & (female == 1) 
+dat_use <- subset(acs2017_ny,use_varb) 
+detach()
+attach(dat_use)
+```
+ 
+Fixing the data so that we have labels for our factors: 
+
+```{r}
+dat_use$LABFORCE <- as.factor(dat_use$LABFORCE)
+levels(dat_use$LABFORCE) <- c("Not in LF","in LF", "N/A")
+
+dat_use$MARST <- as.factor(dat_use$MARST)
+levels(dat_use$MARST) <- c("married spouse present","married spouse absent","separated","divorced","widowed","never married")
+
+```
+
+Let's see how does the labor force participation by age group looks like:
+
+```{r}
+library(kableExtra)
+dat_use$age_bands <- cut(dat_use$AGE,breaks=c(25,35,45,55,65,100)) #This is an interesting piece of code that allows "divide" a certain variable into breaks. That way we can understand labor participation by group of age. 
+
+lf <- table(dat_use$age_bands,dat_use$LABFORCE) #Creates a variable containing a table of participation in the labor force by age group.
+
+
+#The below piece of code creates a nice-looking table out of lf variable we created:
+lf %>% 
+  kbl() %>%
+  kable_styling()
+
+#Here is a graph for visually showing participation in the labor force by age group:
+plot(lf, main="Labor Force Participation by Age Group",
+xlab="Age Group",
+ylab="Participation", 
+col = c("grey", "pink"))
+```
+
+Since we excluded anyone younger than 25 we don't have to deal with the NAs in our data. In the class lab we saw that some NAs showed for people below 25, probabily because some people go through college without working or actively looking for work. In the table above we see that the female population above 65 has a lower participation rate than other age groups. I wish I could show this in the table, but I tried several things and nothing worked with an object of class table. Nevertheless, the graph visually shows that participation rate tends to decrease in the age groups 55-100. 
+
+Now, let's create a logistic regression for that
+```{r}
+model_logit1 <- glm(LABFORCE ~ AGE + MARST + NCHILD,
+            family = binomial, data = dat_use)
+
+summary(model_logit1)
+library(stargazer)
+stargazer(model_logit1, type="text") #Let's make it prettier and easier to interpret. 
+```
+
+We see that all variables but "separated" are statistically significant (***), meaning that there is a great chance that this model isn't random and there is an actual relationship between the labor force status, marital status, and number of children amongst the female population between 25 and 55. 
+
+
+Now, let's graph it: 
+
+```{r}
+dat_use$LABFORCE <- droplevels(dat_use$LABFORCE)
+
+NNobs <- length(dat_use$LABFORCE)
+set.seed(12345) # just so you can replicate and get same "random" choices
+graph_obs <- (runif(NNobs) < 0.1) # so something like just 1/10 as many obs
+dat_graph <-subset(dat_use,graph_obs)  
+
+ plot(LABFORCE ~ jitter(AGE, factor = 2), pch = 16, ylim = c(0,1), data = dat_graph, main = "Labor Force Participation by Age", xlab = "Age", ylab = "Labor Force Status", col = c("grey","pink"))
+
+
+to_be_predicted <- data.frame(AGE = 25:55, MARST = "never married", NCHILD = 1)
+to_be_predicted$yhat <- predict(model_logit1, newdata = to_be_predicted)
+
+lines(yhat ~ AGE, data = to_be_predicted)
+```
+
+Odds Ratio - This will help us to see how much an increase in a given variable will *cause* a increase/decrease in our dependent (y) variable, in this case the labor force status. This will get a little tricky, because we are using MARST which is a categorical data (it's not ordered). What I could do is create a new model in which I use the variable unmarried, which is binomial. 
+
+```{r}
+#Transform "unmarried" variable into a factor:
+dat_use$unmarried <- as.factor(dat_use$unmarried)
+levels(dat_use$unmarried) <- c("Married","Unmarried")
+
+
+model_logit2 <- glm(LABFORCE ~ AGE + unmarried + NCHILD,
+            family = binomial, data = dat_use)
+
+stargazer(model_logit2, type="text") #Let's make it prettier and easier to interpret. 
+
+```
+
+The above means that the numeric variables for age and number of children have a negative correlation with the labor force status (Remember that *** means this falls into a confidence interval of 99% and is statistically significant). So, for instance, the greater the NCHILD value, the more likely is that the LABFORCE will be "lower", in this case equal to 0, or not in the labor force. 
+
+Now, we'll look into elasticity (% change in dependent variable Y given a change in X variables) by using the odds ratio. 
+
+I found this interesting thing in interpreting odds ratio:
+"Relative risk ratios allow an easier interpretation of the logit coefficients. They are the exponentiated value of the logit coefficients."
+```{r}
+#To exponentiate the value of the logit coefs:
+logit.or = exp(coef(model_logit2))
+stargazer(model_logit2, type="text", coef=list(logit.or), p.auto=FALSE)
+```
+
+Keeping all other variables constant, when the number of children increases one unit, it is 0.875 (or 87.5%) times more likely that woman will not be in the labor force. As we see above, this results are statistically significant. 
+
+
+The tricky part in here is that 1 unit of age is nothing in the intervals 25-60, because the participation rate of our population doesn't change much amongst these age groups. However, as we see in the graphs above, one unit of age can impact the portion of population in the labor force once higher than 60. I don't know how to fix that. 
+
+Ok, now let's see how these things work for a population with only males:
+
+
+```{r}
+attach(acs2017_ny)
+use_varb2 <- (AGE >= 25) & (female == 0) 
+dat_use2 <- subset(acs2017_ny,use_varb2) 
+detach()
+attach(dat_use2)
+```
+
+```{r}
+dat_use2$LABFORCE <- as.factor(dat_use2$LABFORCE)
+levels(dat_use2$LABFORCE) <- c("Not in LF","in LF", "N/A")
+
+dat_use2$MARST <- as.factor(dat_use2$MARST)
+levels(dat_use2$MARST) <- c("married spouse present","married spouse absent","separated","divorced","widowed","never married")
+```
+
+```{r}
+dat_use2$LABFORCE <- droplevels(dat_use2$LABFORCE)
+
+library(kableExtra)
+dat_use2$age_bands <- cut(dat_use2$AGE,breaks=c(25,35,45,55,65,100))
+
+lf.male <- table(dat_use2$age_bands,dat_use2$LABFORCE) 
+
+lf.male %>% 
+  kbl() %>%
+  kable_styling()
+
+plot(lf.male, main="Male Labor Force Participation by Age Group",
+xlab="Age Group",
+ylab="Participation", 
+col = c("grey", "light blue"))
+```
+
+Interesting, males appear to have higher labor force participation rates in all age groups in comparison to women. I wonder why exactly. 
+
+Let's do the same we did above for single women with one child (I'm not even sure if there exist any single men with one child so we'll use divorced instead)
+```{r}
+
+logit <- glm(LABFORCE ~ AGE + MARST + NCHILD,
+            family = binomial, data = dat_use2)
+
+NNobs2 <- length(dat_use2$LABFORCE)
+set.seed(12345) # just so you can replicate and get same "random" choices
+graph_obs2 <- (runif(NNobs2) < 0.1) # so something like just 1/10 as many obs
+dat_graph2 <-subset(dat_use2,graph_obs2)  
+
+plot(LABFORCE ~ jitter(AGE, factor = 2), pch = 16, ylim = c(0,1), data = dat_graph2, main = "Male Labor Force Participation by Age", xlab = "Age", ylab = "Labor Force Status", col = c("grey","light blue"))
+
+
+to_be_predicted2 <- data.frame(AGE = 25:55, MARST = "divorced", NCHILD = 1)
+to_be_predicted2$yhat <- predict(logit, newdata = to_be_predicted2)
+
+lines(yhat ~ AGE, data = to_be_predicted2)
+```
+
+Again, participation rates are greater for males in general, but we see that the same trend is present in regards to age. 
+
+
+```{r}
+#Transform "unmarried" variable into a factor:
+dat_use2$unmarried <- as.factor(dat_use2$unmarried)
+levels(dat_use2$unmarried) <- c("Married","Unmarried")
+
+logit1 <- glm(LABFORCE ~ AGE + unmarried + NCHILD,
+            family = binomial, data = dat_use2)
+stargazer(logit1, type="text") #Let's make it prettier and easier to interpret.
+```
+
+Ok, so above we see that the number of children has a positive correlation with the participation in the labor force, while for the previous logit regression we ran for a female population the number of children had a negative correlation to the participation in the labor force. This sort of confirms my initial supposition that having children doesn't affect men's work life as much as it affects women's. I'm surprised that there is actually a statistically significance positive correlation between the two variables, I expected the number of children to not be correlated at all (0 or statistically insignificant). The correlation of Age is very close for both populations. 
